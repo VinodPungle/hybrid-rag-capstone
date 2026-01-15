@@ -1,0 +1,9 @@
+openai>=1.12.0
+python-dotenv
+faiss-cpu
+pypdf
+tiktoken
+langchain
+streamlit
+fastapi
+uvicorn
