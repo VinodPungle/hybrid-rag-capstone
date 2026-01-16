@@ -1,0 +1,7 @@
+data
+embeddings
+ingestion
+llm
+retrieval
+ui
+vector_db
