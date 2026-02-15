@@ -1,5 +1,9 @@
 import pytest
 from unittest.mock import Mock, patch
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 def test_rag_pipeline_imports():
     """Test that all pipeline modules can be imported"""
@@ -16,7 +20,7 @@ def test_rag_pipeline_chunk_count():
     from ingestion.pdf_loader import load_pdf_text
     from ingestion.chunker import chunk_text
     
-    text = load_pdf_text("data/raw/audit-committee-guide-2025.pdf")
+    text = load_pdf_text(os.getenv("INPUT_FILE"))
     chunks = chunk_text(text)
     
     assert len(chunks) > 0

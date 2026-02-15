@@ -1,11 +1,14 @@
 import os
 from openai import AzureOpenAI
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Azure OpenAI configuration
-endpoint = "https://myopenai-demo-vinod.cognitiveservices.azure.com/"
-api_key = "7mPYy9EHNMwukUL9sWLMlo5SvcMUpxo0pDqK5G3zMOOmhDCrhR9WJQQJ99BLAC77bzfXJ3w3AAABACOG1A89"
-deployment = "embedding-model"
-api_version = "2024-02-01"
+endpoint = os.getenv("AZURE_OPENAI_EMBEDDING_ENDPOINT")
+api_key = os.getenv("AZURE_OPENAI_EMBEDDING_KEY")
+deployment = os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT")
+api_version = os.getenv("AZURE_EMBEDDING_API_VERSION")
 
 # Initialize the AzureOpenAI client
 client = AzureOpenAI(

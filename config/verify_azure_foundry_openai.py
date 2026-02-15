@@ -1,12 +1,15 @@
 import os
 from openai import AzureOpenAI
+from dotenv import load_dotenv
 
-endpoint = "https://vinod-mkf3fo19-eastus2.cognitiveservices.azure.com/openai/deployments/gpt-4o-mini/chat/completions?api-version=2025-01-01-preview"
-model_name = "gpt-4o-mini"
-deployment = "gpt-4o-mini"
+load_dotenv()
 
-subscription_key = "3mrH37EXbcf3yvbt05hOS3MHsqKTKoYZgWb9bCET39dtKch2lssYJQQJ99CAACHYHv6XJ3w3AAAAACOGF3Ux"
-api_version = "2024-12-01-preview"
+endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
+model_name = os.getenv("AZURE_MODEL_NAME")  
+deployment = os.getenv("AZURE_OPENAI_DEPLOYMENT")  
+
+subscription_key = os.getenv("AZURE_OPENAI_KEY")
+api_version = os.getenv("AZURE_API_VERSION")
 
 client = AzureOpenAI(
     api_version=api_version,
