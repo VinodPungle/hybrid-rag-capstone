@@ -5,8 +5,13 @@ from vector_db.faiss_store import build_faiss_index
 from retrieval.search import search
 from llm.generator import generate_answer
 
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
 # 1. Load document
-text = load_pdf_text("data/raw/audit-committee-guide-2025.pdf")
+text = load_pdf_text(os.getenv("INPUT_FILE"))
 
 # 2. Chunk text
 chunks = chunk_text(text)
@@ -18,7 +23,7 @@ vectors = embed_texts(chunks)
 index = build_faiss_index(vectors)
 
 # 5. Ask a question
-query = "What is role of audit committee member?"
+query = "Tell more about audit committee responsibilities."
 results = search(query, index, chunks)
 
 # 6. Generate answer
