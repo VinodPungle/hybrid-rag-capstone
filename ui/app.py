@@ -1,18 +1,24 @@
-import streamlit as st
+import sys
 import os
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+import streamlit as st
 from dotenv import load_dotenv
 from ingestion.pdf_loader import load_pdf_text
 from ingestion.chunker import chunk_text
 from embeddings.embedder import embed_texts
 from vector_db.faiss_store import build_faiss_index
-from retrieval.search import search
+from retrieval.hybrid_search import hybrid_search
+from graph_db.entity_extractor import extract_graph_from_chunks
+from graph_db.neo4j_store import get_driver, build_knowledge_graph, fetch_graph_visual_data
+from streamlit_agraph import agraph, Node, Edge, Config
 from llm.generator import generate_answer
 load_dotenv()
 
 st.set_page_config(page_title="Hybrid RAG Demo", layout="wide")
 
 st.title("📄 Hybrid RAG – Compliance Assistant")
-st.write("First load the document and then ask questions.")
+st.write("First load the document and then ask questions. Uses both vector search and knowledge graph (GraphRAG) for enhanced retrieval.")
 
 # -----------------------------
 # Session state (cache objects)
@@ -20,6 +26,7 @@ st.write("First load the document and then ask questions.")
 if "index" not in st.session_state:
     st.session_state.index = None
     st.session_state.chunks = None
+    st.session_state.neo4j_driver = None
 
 # -----------------------------
 # Load document button
@@ -36,7 +43,18 @@ if st.sidebar.button("Load Document"):
         st.session_state.index = index
         st.session_state.chunks = chunks
 
-    st.sidebar.success("Document indexed successfully!")
+    st.sidebar.success("Vector index built!")
+
+    with st.spinner("Building knowledge graph (GraphRAG)..."):
+        try:
+            entities, relationships = extract_graph_from_chunks(chunks)
+            driver = get_driver()
+            build_knowledge_graph(driver, entities, relationships)
+            st.session_state.neo4j_driver = driver
+            st.sidebar.success(f"Knowledge graph built: {len(entities)} entities, {len(relationships)} relationships.")
+        except Exception as e:
+            st.sidebar.warning(f"Graph build failed (vector search still available): {e}")
+            st.session_state.neo4j_driver = None
 
 # -----------------------------
 # Question input
@@ -44,27 +62,106 @@ if st.sidebar.button("Load Document"):
 query = st.text_input("🔍 Ask a question:")
 
 # -----------------------------
-# Run RAG
+# Run Hybrid RAG
 # -----------------------------
 if query and st.session_state.index:
     with st.spinner("Searching and generating answer..."):
-        retrieved_chunks = search(
+        results = hybrid_search(
             query,
             st.session_state.index,
             st.session_state.chunks,
+            driver=st.session_state.neo4j_driver,
             top_k=3
         )
 
-        context = "\n".join(retrieved_chunks)
-        answer = generate_answer(query, context)
+        answer = generate_answer(query, results["combined_context"])
 
     st.subheader("✅ Answer")
     st.write(answer)
 
-    with st.expander("📚 Retrieved Context"):
-        for i, chunk in enumerate(retrieved_chunks, 1):
-            st.markdown(f"**Chunk {i}:**")
-            st.write(chunk)
+    col1, col2 = st.columns(2)
+
+    with col1:
+        with st.expander("📚 Vector Search Results", expanded=True):
+            for i, chunk in enumerate(results["vector_results"], 1):
+                st.markdown(f"**Chunk {i}:**")
+                st.write(chunk)
+
+    with col2:
+        with st.expander("🔗 Knowledge Graph Context", expanded=True):
+            if results["graph_results"]:
+                for i, ctx in enumerate(results["graph_results"], 1):
+                    st.markdown(f"**Relationship {i}:** {ctx}")
+            else:
+                st.info("No graph context found for this query.")
 
 elif query and not st.session_state.index:
     st.warning("Please load the document first from the sidebar.")
+
+# -----------------------------
+# Knowledge Graph Visualization
+# -----------------------------
+ENTITY_COLORS = {
+    "Person": "#FF6B6B",
+    "Organization": "#4ECDC4",
+    "Committee": "#45B7D1",
+    "Role": "#96CEB4",
+    "Regulation": "#FFEAA7",
+    "Process": "#DDA0DD",
+    "Document": "#98D8C8",
+    "Concept": "#F7DC6F",
+}
+
+if st.session_state.neo4j_driver:
+    st.divider()
+    st.subheader("🔗 Knowledge Graph Visualization")
+
+    try:
+        graph_nodes, graph_edges = fetch_graph_visual_data(st.session_state.neo4j_driver, limit=150)
+
+        if graph_nodes and graph_edges:
+            nodes = [
+                Node(
+                    id=n["name"],
+                    label=n["name"],
+                    size=20,
+                    color=ENTITY_COLORS.get(n["type"], "#97C2FC"),
+                    title=f"{n['name']} ({n['type']})"
+                )
+                for n in graph_nodes
+            ]
+            edges = [
+                Edge(
+                    source=e["source"],
+                    target=e["target"],
+                    label=e["relation"],
+                    color="#888888"
+                )
+                for e in graph_edges
+            ]
+
+            config = Config(
+                width=900,
+                height=600,
+                directed=True,
+                physics=True,
+                hierarchical=False,
+                nodeHighlightBehavior=True,
+                highlightColor="#F7A7A6",
+                collapsible=True,
+            )
+
+            agraph(nodes=nodes, edges=edges, config=config)
+
+            # Legend
+            st.markdown("**Legend:**")
+            legend_cols = st.columns(len(ENTITY_COLORS))
+            for col, (etype, color) in zip(legend_cols, ENTITY_COLORS.items()):
+                col.markdown(
+                    f'<span style="color:{color}; font-size:20px;">&#9679;</span> {etype}',
+                    unsafe_allow_html=True
+                )
+        else:
+            st.info("No graph data available. Load a document first.")
+    except Exception as e:
+        st.warning(f"Could not render graph: {e}")
