@@ -7,3 +7,5 @@ langchain
 streamlit
 fastapi
 uvicorn
+neo4j
+streamlit-agraph
