@@ -17,7 +17,7 @@ load_dotenv()
 
 st.set_page_config(page_title="Hybrid RAG Demo", layout="wide")
 
-st.title("📄 Hybrid RAG – Compliance Assistant")
+st.title("📄 Hybrid RAG – Documents Understanding Assistant")
 st.write("First load the document and then ask questions. Uses both vector search and knowledge graph (GraphRAG) for enhanced retrieval.")
 
 # -----------------------------
@@ -29,13 +29,31 @@ if "index" not in st.session_state:
     st.session_state.neo4j_driver = None
 
 # -----------------------------
-# Load document button
+# Upload / Load document
 # -----------------------------
 st.sidebar.header("📂 Document Setup")
 
+uploaded_file = st.sidebar.file_uploader("Upload a PDF document", type=["pdf"])
+
 if st.sidebar.button("Load Document"):
+    # Determine PDF source: uploaded file or INPUT_FILE env var
+    if uploaded_file is not None:
+        import tempfile
+        tmp_dir = tempfile.mkdtemp()
+        tmp_path = os.path.join(tmp_dir, uploaded_file.name)
+        with open(tmp_path, "wb") as f:
+            f.write(uploaded_file.getbuffer())
+        pdf_path = tmp_path
+        st.sidebar.info(f"Using uploaded file: {uploaded_file.name}")
+    elif os.getenv("INPUT_FILE"):
+        pdf_path = os.getenv("INPUT_FILE")
+        st.sidebar.info(f"Using env file: {os.path.basename(pdf_path)}")
+    else:
+        st.sidebar.error("Please upload a PDF or set INPUT_FILE in .env")
+        st.stop()
+
     with st.spinner("Loading and indexing document..."):
-        text = load_pdf_text(os.getenv("INPUT_FILE"))
+        text = load_pdf_text(pdf_path)
         chunks = chunk_text(text)
         vectors = embed_texts(chunks)
         index = build_faiss_index(vectors)
