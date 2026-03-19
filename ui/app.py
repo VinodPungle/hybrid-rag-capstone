@@ -78,11 +78,16 @@ if st.sidebar.button("Load Document"):
 # Question input
 # -----------------------------
 query = st.text_input("🔍 Ask a question:")
+ask_button = st.button("Ask")
 
 # -----------------------------
 # Run Hybrid RAG
 # -----------------------------
-if query and st.session_state.index:
+if ask_button and not query.strip():
+    st.warning("Please enter a question before clicking Ask.")
+elif ask_button and not st.session_state.index:
+    st.warning("Please load the document first from the sidebar.")
+elif ask_button and query.strip() and st.session_state.index:
     with st.spinner("Searching and generating answer..."):
         results = hybrid_search(
             query,
@@ -113,8 +118,6 @@ if query and st.session_state.index:
             else:
                 st.info("No graph context found for this query.")
 
-elif query and not st.session_state.index:
-    st.warning("Please load the document first from the sidebar.")
 
 # -----------------------------
 # Knowledge Graph Visualization
