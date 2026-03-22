@@ -1,0 +1,842 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Building a Production Hybrid RAG System — Vector Search + Knowledge Graph | Developer Blog</title>
+<style>
+  :root {
+    --navy:    #1F3864;
+    --blue:    #2E75B6;
+    --cyan:    #00B0F0;
+    --bg:      #F4F8FD;
+    --surface: #FFFFFF;
+    --text:    #1A1A2E;
+    --muted:   #5A6070;
+    --border:  #DCE6F1;
+    --green:   #1D7A4A;
+    --green-bg:#E8F5EE;
+    --orange:  #C24B0A;
+    --orange-bg:#FEF0E7;
+    --code-bg: #1E2233;
+    --code-text:#E8EBF3;
+    --tag-bg:  #EBF3FC;
+    --tag-text:#2E75B6;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    font-size: 17px;
+    line-height: 1.8;
+    color: var(--text);
+    background: var(--bg);
+  }
+
+  /* ── HERO ── */
+  .hero {
+    background: linear-gradient(135deg, var(--navy) 0%, #2a4a8a 50%, #1a5fa0 100%);
+    color: white;
+    padding: 80px 24px 64px;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+  }
+  .hero::before {
+    content: '';
+    position: absolute; inset: 0;
+    background: radial-gradient(ellipse at 70% 50%, rgba(0,176,240,0.15) 0%, transparent 70%);
+    pointer-events: none;
+  }
+  .hero-badge {
+    display: inline-block;
+    background: rgba(0,176,240,0.2);
+    border: 1px solid rgba(0,176,240,0.5);
+    color: var(--cyan);
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    padding: 6px 18px;
+    border-radius: 20px;
+    margin-bottom: 24px;
+  }
+  .hero h1 {
+    font-size: clamp(28px, 5vw, 48px);
+    font-weight: 800;
+    line-height: 1.2;
+    max-width: 820px;
+    margin: 0 auto 20px;
+    letter-spacing: -0.02em;
+  }
+  .hero h1 span { color: var(--cyan); }
+  .hero-sub {
+    font-size: 18px;
+    color: rgba(255,255,255,0.78);
+    max-width: 600px;
+    margin: 0 auto 36px;
+  }
+  .hero-meta {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 20px;
+    font-size: 14px;
+    color: rgba(255,255,255,0.65);
+  }
+  .hero-meta span { display: flex; align-items: center; gap: 6px; }
+
+  /* ── TAGS ── */
+  .tags {
+    display: flex; flex-wrap: wrap; gap: 8px;
+    padding: 20px 0;
+    max-width: 860px; margin: 0 auto;
+  }
+  .tag {
+    background: var(--tag-bg);
+    color: var(--tag-text);
+    font-size: 12px; font-weight: 600;
+    padding: 4px 12px; border-radius: 12px;
+    border: 1px solid var(--border);
+    text-decoration: none;
+  }
+
+  /* ── LAYOUT ── */
+  .container { max-width: 860px; margin: 0 auto; padding: 0 24px; }
+  .article-body { padding: 48px 0 80px; }
+
+  /* ── TYPOGRAPHY ── */
+  h2 {
+    font-size: 28px; font-weight: 800;
+    color: var(--navy);
+    margin: 56px 0 16px;
+    padding-bottom: 12px;
+    border-bottom: 3px solid var(--cyan);
+  }
+  h3 {
+    font-size: 20px; font-weight: 700;
+    color: var(--blue);
+    margin: 36px 0 12px;
+  }
+  h4 {
+    font-size: 16px; font-weight: 700;
+    color: var(--navy);
+    margin: 24px 0 8px;
+  }
+  p { margin-bottom: 18px; }
+  a { color: var(--blue); text-decoration: none; border-bottom: 1px solid transparent; transition: border-color 0.2s; }
+  a:hover { border-bottom-color: var(--blue); }
+  strong { color: var(--navy); font-weight: 700; }
+
+  /* ── CALLOUTS ── */
+  .callout {
+    border-left: 4px solid var(--blue);
+    background: var(--bg);
+    padding: 16px 20px;
+    border-radius: 0 8px 8px 0;
+    margin: 24px 0;
+    font-size: 15px;
+  }
+  .callout.tip   { border-color: var(--green); background: var(--green-bg); }
+  .callout.warn  { border-color: var(--orange); background: var(--orange-bg); }
+  .callout strong { display: block; margin-bottom: 6px; font-size: 14px; letter-spacing: 0.05em; }
+  .callout.tip strong   { color: var(--green); }
+  .callout.warn strong  { color: var(--orange); }
+  .callout.info strong  { color: var(--blue); }
+
+  /* ── CODE ── */
+  pre {
+    background: var(--code-bg);
+    color: var(--code-text);
+    font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+    font-size: 13.5px;
+    line-height: 1.6;
+    padding: 20px 24px;
+    border-radius: 10px;
+    overflow-x: auto;
+    margin: 20px 0;
+    position: relative;
+  }
+  pre .comment { color: #7C8FAD; }
+  pre .keyword { color: #C792EA; }
+  pre .string  { color: #C3E88D; }
+  pre .fn      { color: #82AAFF; }
+  pre .num     { color: #F78C6C; }
+  pre .var     { color: #EEFFFF; }
+  code {
+    background: rgba(46,117,182,0.1);
+    color: var(--blue);
+    font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+    font-size: 14px;
+    padding: 2px 7px;
+    border-radius: 4px;
+  }
+  pre code { background: none; color: inherit; font-size: inherit; padding: 0; }
+
+  /* ── ARCHITECTURE BOX ── */
+  .arch-box {
+    background: var(--navy);
+    border-radius: 12px;
+    padding: 28px 20px;
+    margin: 28px 0;
+    overflow-x: auto;
+  }
+  .arch-box pre {
+    background: none;
+    margin: 0;
+    padding: 0;
+    font-size: 13px;
+    color: #E8EBF3;
+  }
+  .arch-title {
+    color: var(--cyan);
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 16px;
+    text-align: center;
+  }
+
+  /* ── TABLES ── */
+  .table-wrap { overflow-x: auto; margin: 24px 0; }
+  table { width: 100%; border-collapse: collapse; font-size: 15px; }
+  thead th {
+    background: var(--navy);
+    color: white;
+    font-weight: 700;
+    padding: 12px 16px;
+    text-align: left;
+    font-size: 13px;
+    letter-spacing: 0.04em;
+  }
+  tbody tr:nth-child(even) { background: var(--bg); }
+  tbody tr:nth-child(odd)  { background: var(--surface); }
+  tbody td {
+    padding: 11px 16px;
+    border-bottom: 1px solid var(--border);
+    font-size: 14px;
+    vertical-align: top;
+  }
+  tbody td strong { color: var(--navy); }
+
+  /* ── COMPONENT CARDS ── */
+  .component-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 16px;
+    margin: 24px 0;
+  }
+  .component-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-top: 3px solid var(--blue);
+    border-radius: 8px;
+    padding: 18px;
+    transition: box-shadow 0.2s;
+  }
+  .component-card:hover { box-shadow: 0 4px 16px rgba(46,117,182,0.15); }
+  .component-card .icon { font-size: 22px; margin-bottom: 8px; }
+  .component-card h4 { margin: 0 0 6px; font-size: 15px; color: var(--navy); }
+  .component-card p { font-size: 13px; color: var(--muted); margin: 0; line-height: 1.5; }
+  .component-card code { font-size: 12px; }
+
+  /* ── PIPELINE FLOW ── */
+  .pipeline {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0;
+    margin: 24px 0;
+  }
+  .pipeline-step {
+    background: var(--surface);
+    border: 2px solid var(--blue);
+    border-radius: 8px;
+    padding: 10px 16px;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--navy);
+    text-align: center;
+    min-width: 90px;
+  }
+  .pipeline-arrow {
+    color: var(--blue);
+    font-size: 18px;
+    padding: 0 6px;
+    flex-shrink: 0;
+  }
+
+  /* ── TECH PILLS ── */
+  .tech-stack {
+    display: flex; flex-wrap: wrap; gap: 10px; margin: 16px 0 24px;
+  }
+  .tech-pill {
+    background: var(--navy);
+    color: white;
+    font-size: 13px; font-weight: 600;
+    padding: 6px 14px; border-radius: 20px;
+  }
+
+  /* ── Q&A ── */
+  .qa-item {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px 24px;
+    margin: 16px 0;
+  }
+  .qa-q {
+    font-weight: 700; font-size: 16px;
+    color: var(--navy);
+    margin-bottom: 12px;
+  }
+  .qa-q::before { content: "Q: "; color: var(--blue); }
+  .qa-a { font-size: 15px; color: var(--text); }
+
+  /* ── SECTION INTRO ── */
+  .section-intro {
+    font-size: 18px; color: var(--muted);
+    border-left: 3px solid var(--cyan);
+    padding-left: 18px;
+    margin: -8px 0 32px;
+    line-height: 1.6;
+  }
+
+  /* ── TOC ── */
+  .toc {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 24px 28px;
+    margin: 32px 0;
+    font-size: 15px;
+  }
+  .toc h3 { margin: 0 0 14px; font-size: 16px; color: var(--navy); }
+  .toc ol { padding-left: 20px; }
+  .toc li { margin: 6px 0; }
+  .toc a { color: var(--blue); }
+
+  /* ── FOOTER ── */
+  .article-footer {
+    border-top: 2px solid var(--border);
+    padding: 40px 0;
+    text-align: center;
+    color: var(--muted);
+    font-size: 14px;
+  }
+  .article-footer a { color: var(--blue); }
+
+  /* ── RESPONSIVE ── */
+  @media (max-width: 600px) {
+    .pipeline { flex-direction: column; align-items: flex-start; }
+    .pipeline-arrow { transform: rotate(90deg); }
+    h2 { font-size: 22px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- HERO -->
+<div class="hero">
+  <div class="container">
+    <div class="hero-badge">Deep Dive · AI Engineering</div>
+    <h1>Building a <span>Production Hybrid RAG</span> System from Scratch</h1>
+    <p class="hero-sub">How to combine vector search and knowledge graphs to build a grounded, hallucination-resistant document Q&A system — with full LLMOps.</p>
+    <div class="hero-meta">
+      <span>🗓️ March 2025</span>
+      <span>⏱️ 18 min read</span>
+      <span>🔗 <a href="https://github.com/VinodPungle/hybrid-rag-capstone" style="color:var(--cyan)">github.com/VinodPungle/hybrid-rag-capstone</a></span>
+    </div>
+  </div>
+</div>
+
+<!-- TAGS -->
+<div class="container">
+  <div class="tags">
+    <span class="tag">RAG</span>
+    <span class="tag">LLMOps</span>
+    <span class="tag">Vector Search</span>
+    <span class="tag">Knowledge Graph</span>
+    <span class="tag">Neo4j</span>
+    <span class="tag">FAISS</span>
+    <span class="tag">Azure OpenAI</span>
+    <span class="tag">FastAPI</span>
+    <span class="tag">Streamlit</span>
+    <span class="tag">Prometheus</span>
+    <span class="tag">Docker</span>
+    <span class="tag">Python</span>
+  </div>
+</div>
+
+<!-- ARTICLE BODY -->
+<div class="container">
+<article class="article-body">
+
+<!-- TABLE OF CONTENTS -->
+<div class="toc">
+  <h3>📋 In This Article</h3>
+  <ol>
+    <li><a href="#why-hybrid">Why Hybrid RAG? The Case Against Single-Strategy Retrieval</a></li>
+    <li><a href="#architecture">System Architecture — A Bird's-Eye View</a></li>
+    <li><a href="#ingestion">The Ingestion Pipeline — From PDF to Searchable Chunks</a></li>
+    <li><a href="#vector">Vector Search with FAISS — Dense Retrieval</a></li>
+    <li><a href="#graph">Knowledge Graph with Neo4j — Structured Retrieval</a></li>
+    <li><a href="#hybrid">Hybrid Search — Fusing Both Worlds</a></li>
+    <li><a href="#generation">LLM Answer Generation — Grounded & Faithful</a></li>
+    <li><a href="#api-ui">API & UI — Serving the Pipeline</a></li>
+    <li><a href="#llmops">LLMOps — Monitoring, Evaluation & Orchestration</a></li>
+    <li><a href="#quickstart">Quickstart — Run It Yourself in 5 Minutes</a></li>
+    <li><a href="#lessons">Key Lessons & What to Build Next</a></li>
+  </ol>
+</div>
+
+<!-- ─────────────────────────────────────── -->
+<h2 id="why-hybrid">1. Why Hybrid RAG? The Case Against Single-Strategy Retrieval</h2>
+<p class="section-intro">Standard RAG only uses vector similarity. That's a good start — but it leaves a lot of value on the table.</p>
+
+<p>Retrieval-Augmented Generation (RAG) has become the de-facto pattern for building LLM applications over private or specialized documents. The idea is elegant: instead of asking the model to recall facts from its training weights, retrieve the relevant document passages at query time and hand them to the model as verified context.</p>
+
+<p>But the dominant implementation — <strong>dense vector retrieval only</strong> — has a structural blind spot. Consider a document about corporate governance. A user asks: <em>"Who is responsible for approving the annual audit?"</em></p>
+
+<p>Vector search will find the paragraph containing the word "audit" with the most similar embedding. It might even find the right paragraph. But it cannot tell you that <strong>the CFO chairs the Audit Committee, which reports to the Board, which approves the audit</strong> — because that chain of structured relationships isn't captured in any single text chunk.</p>
+
+<div class="callout info">
+  <strong>💡 The Core Insight</strong>
+  Vector search is great at "find me text similar to this query."<br>
+  Graph search is great at "follow these named relationships to find a fact."<br>
+  Combining both gives the LLM richer, more reliable context for complex questions.
+</div>
+
+<p>This project — <a href="https://github.com/VinodPungle/hybrid-rag-capstone">hybrid-rag-capstone</a> — implements exactly this: a production-grade system combining FAISS vector search with a Neo4j knowledge graph, wrapped in a FastAPI REST API, a Streamlit UI, Prometheus/Grafana monitoring, automated evaluation metrics, and Apache Airflow orchestration.</p>
+
+<p>Let's walk through every component, how they fit together, and what the implementation decisions mean in practice.</p>
+
+<div class="tech-stack">
+  <span class="tech-pill">Python 3.13</span>
+  <span class="tech-pill">Azure OpenAI</span>
+  <span class="tech-pill">FAISS</span>
+  <span class="tech-pill">Neo4j Aura</span>
+  <span class="tech-pill">FastAPI</span>
+  <span class="tech-pill">Streamlit</span>
+  <span class="tech-pill">Prometheus</span>
+  <span class="tech-pill">Grafana</span>
+  <span class="tech-pill">Apache Airflow</span>
+  <span class="tech-pill">Docker</span>
+</div>
+
+<!-- ─────────────────────────────────────── -->
+<h2 id="architecture">2. System Architecture — A Bird's-Eye View</h2>
+<p class="section-intro">The system has two phases: an offline ingestion phase that builds search indexes from a PDF, and an online query phase that retrieves and generates answers.</p>
+
+<div class="arch-box">
+  <div class="arch-title">Hybrid RAG Capstone — Architecture</div>
+<pre>
+USER (Browser / Swagger UI / CLI)
+         │  PDF Upload     │  Query
+         ▼                 ▼
+┌──────────────┐   ┌──────────────────────┐
+│  STREAMLIT   │   │   FASTAPI REST API   │
+│  ui/app.py   │   │   api/app.py         │
+│  port 8501   │   │   /ingest /ask       │
+└──────┬───────┘   └──────────┬───────────┘
+       └────────────┬──────────┘
+                    ▼
+       ┌────────────────────────────┐
+       │    INGESTION PIPELINE      │
+       │  pdf_loader → chunker      │
+       │  → embedder (Azure OAI)    │
+       └───────┬────────────────────┘
+               │ 1536-dim vectors
+       ┌───────┴──────┐   ┌─────────────────────────┐
+       │  FAISS INDEX │   │   NEO4J KNOWLEDGE GRAPH  │
+       │ faiss_store  │   │  entity_extractor (LLM)  │
+       │ IndexFlatL2  │   │  neo4j_store (Cypher)    │
+       └───────┬──────┘   └────────────┬────────────┘
+               │                       │
+               └──────────┬────────────┘
+                           ▼  QUERY TIME
+              ┌────────────────────────────┐
+              │      HYBRID SEARCH         │
+              │  search.py (FAISS top-K)   │
+              │  graph_search.py (Cypher)  │
+              │  → combined_context        │
+              └──────────┬─────────────────┘
+                         ▼
+              ┌────────────────────────────┐
+              │   LLM GENERATION           │
+              │   generator.py             │
+              │   Azure OpenAI GPT-4o-mini │
+              └────────────────────────────┘
+
+══════════════ LLMOPS LAYER ══════════════
+  config.yaml │ structured logging │ pytest
+  Prometheus (9090) │ Grafana (3000)
+  Airflow (8080) │ Docker Compose
+</pre>
+</div>
+
+<p>The pipeline is deliberately modular: each directory is an independent Python package with a clear responsibility. The entire system is driven by <code>config/config.yaml</code> for all tunable parameters, with secrets staying in <code>.env</code> — a clean separation that makes the system reproducible and auditable.</p>
+
+<!-- ─────────────────────────────────────── -->
+<h2 id="ingestion">3. The Ingestion Pipeline — From PDF to Searchable Chunks</h2>
+<p class="section-intro">Ingestion converts a raw PDF into two search indexes: a FAISS vector store and a Neo4j knowledge graph.</p>
+
+<h3>3.1 PDF Loading (<code>ingestion/pdf_loader.py</code>)</h3>
+<p>The <code>load_pdf_text()</code> function uses <a href="https://pypdf.readthedocs.io">pypdf</a> to iterate over every page and concatenate the extracted text into a single string. Simple, but the right tool — pypdf handles multi-column layouts, embedded fonts, and standard PDF encodings reliably.</p>
+
+<h3>3.2 Text Chunking (<code>ingestion/chunker.py</code>)</h3>
+<p>A continuous text document can't be searched as-is — it needs to be split into smaller windows that can each be converted to an embedding vector. The chunker uses an overlapping sliding window:</p>
+
+<pre><code><span class="comment"># config.yaml drives these values — no hardcoded magic numbers</span>
+<span class="var">chunk_size</span> = <span class="num">500</span>   <span class="comment"># words per chunk</span>
+<span class="var">overlap</span>    = <span class="num">80</span>    <span class="comment"># words shared between adjacent chunks</span>
+<span class="var">step</span>       = max(chunk_size - overlap, <span class="num">1</span>)  <span class="comment"># defensive guard against infinite loop</span>
+
+<span class="keyword">while</span> start < len(words):
+    chunk = words[start : start + chunk_size]
+    chunks.append(<span class="string">' '</span>.join(chunk))
+    start += step</code></pre>
+
+<div class="callout tip">
+  <strong>🟢 Why overlap matters</strong>
+  Without overlap, a sentence spanning a chunk boundary gets split across two chunks — neither contains the complete idea. With 80-word overlap, every boundary region is covered by both adjacent chunks, ensuring retrieval completeness.
+</div>
+
+<p>The defensive <code>step = max(..., 1)</code> guard prevents an infinite loop if <code>overlap >= chunk_size</code> — a real edge case discovered during unit test development. This is a great example of <strong>test-driven bug discovery</strong>.</p>
+
+<!-- ─────────────────────────────────────── -->
+<h2 id="vector">4. Vector Search with FAISS — Dense Retrieval</h2>
+<p class="section-intro">Converts each text chunk into a 1536-dimensional vector and indexes them for millisecond nearest-neighbor search at query time.</p>
+
+<h3>4.1 Embedding Generation (<code>embeddings/embedder.py</code>)</h3>
+<p>Every chunk is sent to Azure OpenAI's <strong>text-embedding-3-large</strong> model, which returns a list of 1536 floating-point numbers. The key property: texts with similar meanings get vectors that are geometrically close in 1536-dimensional space. The query at search time goes through the same model, so "audit committee responsibilities" and "What does the audit committee do?" land near each other in vector space — even though the words are different.</p>
+
+<pre><code><span class="fn">resp</span> = client.embeddings.create(
+    <span class="var">model</span> = os.getenv(<span class="string">'AZURE_OPENAI_EMBEDDING_DEPLOYMENT'</span>),
+    <span class="var">input</span> = text
+)
+<span class="var">vector</span> = resp.data[<span class="num">0</span>].embedding  <span class="comment"># list of 1536 floats</span></code></pre>
+
+<h3>4.2 FAISS Index (<code>vector_db/faiss_store.py</code>)</h3>
+<p><a href="https://github.com/facebookresearch/faiss">FAISS</a> (Facebook AI Similarity Search) is a library for fast nearest-neighbor search over dense vectors. This project uses <code>IndexFlatL2</code> — exact Euclidean distance computation over all stored vectors.</p>
+
+<pre><code><span class="var">index</span> = faiss.IndexFlatL2(<span class="num">1536</span>)             <span class="comment"># 1536 = embedding dimensions</span>
+index.add(np.array(vectors, dtype=np.float32))  <span class="comment"># add all chunk vectors</span>
+
+<span class="comment"># At query time (search.py):</span>
+distances, indices = index.search(query_vec, k=<span class="num">3</span>)  <span class="comment"># top-3 similar chunks</span></code></pre>
+
+<div class="callout info">
+  <strong>💡 When to upgrade from IndexFlatL2</strong>
+  <code>IndexFlatL2</code> is exact and needs no training, making it perfect for moderate document sizes. For millions of vectors, switch to <code>IndexIVFFlat</code> (clustered approximate search) or a managed vector DB like Pinecone or Azure AI Search.
+</div>
+
+<!-- ─────────────────────────────────────── -->
+<h2 id="graph">5. Knowledge Graph with Neo4j — Structured Retrieval</h2>
+<p class="section-intro">Extracts named entities and relationships from document text using an LLM, stores them in Neo4j, and traverses the graph at query time for structured context.</p>
+
+<h3>5.1 Entity Extraction (<code>graph_db/entity_extractor.py</code>)</h3>
+<p>For each text chunk, the extractor sends a structured JSON extraction prompt to Azure OpenAI GPT-4o-mini. The prompt (loaded from <code>config.yaml</code>) asks the model to return a JSON object with two keys: <code>entities</code> (a list of <code>{name, type}</code> objects) and <code>relationships</code> (a list of <code>{source, target, relation}</code> objects).</p>
+
+<pre><code><span class="comment"># Example LLM output for a governance document chunk:</span>
+{
+  <span class="string">"entities"</span>: [
+    {<span class="string">"name"</span>: <span class="string">"Audit Committee"</span>, <span class="string">"type"</span>: <span class="string">"Committee"</span>},
+    {<span class="string">"name"</span>: <span class="string">"Board of Directors"</span>, <span class="string">"type"</span>: <span class="string">"Organization"</span>}
+  ],
+  <span class="string">"relationships"</span>: [
+    {<span class="string">"source"</span>: <span class="string">"Audit Committee"</span>,
+     <span class="string">"target"</span>: <span class="string">"Board of Directors"</span>,
+     <span class="string">"relation"</span>: <span class="string">"reports_to"</span>}
+  ]
+}</code></pre>
+
+<p>The system supports 8 entity types configured in <code>config.yaml</code>: Person, Organization, Concept, Regulation, Committee, Role, Process, and Document. All extraction parameters (temperature, max_tokens, entity types, prompt template) are config-driven — no hardcoded values in Python.</p>
+
+<h3>5.2 Neo4j Storage (<code>graph_db/neo4j_store.py</code>)</h3>
+<p>Entities are stored as <code>:Entity</code> nodes and relationships as <code>:RELATES_TO</code> directed edges using Cypher's <strong>MERGE</strong> command — which creates the node/edge only if it doesn't already exist, making ingestion idempotent:</p>
+
+<pre><code><span class="comment">-- Store a relationship (idempotent)</span>
+MERGE (a:Entity {name: $source})
+MERGE (b:Entity {name: $target})
+MERGE (a)-[r:RELATES_TO {relation: $relation}]->(b)
+SET r.source_chunk = $source_chunk</code></pre>
+
+<h3>5.3 Graph Query (Cypher traversal)</h3>
+<p>At query time, <code>graph_search.py</code> scans all entity names in Neo4j, finds those whose words match words in the user query, then traverses up to 2 hops outward from each matching entity:</p>
+
+<pre><code>MATCH path = (e:Entity)-[r:RELATES_TO*1..2]->(related)
+WHERE toLower(e.name) CONTAINS toLower($name)
+RETURN e.name, related.name, [rel IN r | rel.relation] AS rel_chain
+LIMIT $limit</code></pre>
+
+<p>This returns strings like <code>"Audit Committee --[oversees]--> Financial Reporting"</code> — structured facts that vector search alone could never surface.</p>
+
+<!-- ─────────────────────────────────────── -->
+<h2 id="hybrid">6. Hybrid Search — Fusing Both Worlds</h2>
+<p class="section-intro">The core of the system: combining dense and structured retrieval into a single context string for the LLM.</p>
+
+<p>The <code>hybrid_search()</code> function in <code>retrieval/hybrid_search.py</code> orchestrates both retrievers and merges their outputs:</p>
+
+<pre><code><span class="keyword">def</span> <span class="fn">hybrid_search</span>(query, index, chunks, driver=None, top_k=None):
+    <span class="comment"># 1. Dense retrieval — top-K semantically similar chunks</span>
+    vector_results = search(query, index, chunks, top_k=top_k)
+
+    <span class="comment"># 2. Graph retrieval — entity relationship traversal</span>
+    <span class="keyword">try</span>:
+        graph_results = graph_search(query, driver=driver)
+    <span class="keyword">except</span> Exception as e:
+        logger.warning(<span class="string">"Graph search failed, falling back: %s"</span>, e)
+        graph_results = []   <span class="comment"># graceful degradation</span>
+
+    <span class="comment"># 3. Merge with labeled sections (helps LLM understand provenance)</span>
+    context_parts = [
+        <span class="string">"=== Document Context ==="</span>, *vector_results,
+        <span class="string">"\n=== Knowledge Graph Context ==="</span>, *graph_results
+    ]
+    combined_context = <span class="string">"\n"</span>.join(context_parts)
+
+    <span class="keyword">return</span> {<span class="string">"vector_results"</span>: vector_results,
+            <span class="string">"graph_results"</span>: graph_results,
+            <span class="string">"combined_context"</span>: combined_context}</code></pre>
+
+<div class="callout tip">
+  <strong>🟢 Graceful Degradation by Design</strong>
+  The graph search failure is logged as a warning, not an exception. If Neo4j is unavailable (network issue, free tier limit, misconfigured credentials), the API continues serving requests using vector-only results. This is a production-critical design decision — partial functionality beats complete downtime.
+</div>
+
+<p>The labeled sections (<code>=== Document Context ===</code> and <code>=== Knowledge Graph Context ===</code>) are a deliberate prompt engineering choice. They signal to the LLM the nature of each context type — allowing it to draw on dense passages for narrative answers and graph relationship strings for structured facts.</p>
+
+<!-- ─────────────────────────────────────── -->
+<h2 id="generation">7. LLM Answer Generation — Grounded & Faithful</h2>
+<p class="section-intro">The generator assembles the final prompt and calls Azure OpenAI, with built-in hallucination guards.</p>
+
+<p>The <code>generate_answer()</code> function in <code>llm/generator.py</code> builds the prompt from templates in <code>config.yaml</code> and calls Azure OpenAI GPT-4o-mini:</p>
+
+<pre><code><span class="comment"># System prompt (from config.yaml):</span>
+<span class="string">"You are a helpful document understanding assistant.
+Answer questions based only on the provided context."</span>
+
+<span class="comment"># User prompt template:</span>
+<span class="string">"""Answer ONLY using the context below.
+If the answer cannot be found, say 'I cannot answer this based on the provided context.'
+
+Context:
+{combined_context}
+
+Question: {query}
+Answer:"""</span></code></pre>
+
+<p>The explicit constraint <em>"Answer ONLY using the context below"</em> combined with a clear fallback instruction is the primary anti-hallucination mechanism. When this is enforced, the LLM cannot drift into its training data to fill gaps — it either answers from context or admits it cannot.</p>
+
+<p>Every LLM call records token usage and wall-clock latency, both as structured logs (via <code>utils/logger.py</code>) and as Prometheus metrics (via <code>monitoring/prometheus_metrics.py</code>). This is standard LLMOps practice for cost control and performance monitoring.</p>
+
+<!-- ─────────────────────────────────────── -->
+<h2 id="api-ui">8. API & UI — Serving the Pipeline</h2>
+
+<h3>8.1 FastAPI REST API (<code>api/app.py</code>)</h3>
+<p>The API exposes three core endpoints. All request and response shapes are defined as <a href="https://docs.pydantic.dev">Pydantic</a> models, giving automatic validation, serialization, and Swagger UI documentation for free:</p>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Method</th><th>Endpoint</th><th>What It Does</th></tr></thead>
+  <tbody>
+    <tr><td><strong>GET</strong></td><td><code>/health</code></td><td>Returns service status and whether a document is loaded</td></tr>
+    <tr><td><strong>POST</strong></td><td><code>/ingest</code></td><td>Uploads a PDF, runs full ingestion, returns chunk/entity/relationship counts + elapsed time</td></tr>
+    <tr><td><strong>POST</strong></td><td><code>/ask</code></td><td>Submits a query JSON, returns answer + vector results + graph results + latency</td></tr>
+    <tr><td><strong>GET</strong></td><td><code>/metrics</code></td><td>Prometheus scrape endpoint (auto-exposed by <code>prometheus-fastapi-instrumentator</code>)</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>The API uses FastAPI's <strong>lifespan handler</strong> to cleanly close the Neo4j driver on shutdown — a common resource leak in demo projects that's properly handled here.</p>
+
+<h3>8.2 Streamlit Web UI (<code>ui/app.py</code>)</h3>
+<p>The Streamlit interface provides a complete demo experience: PDF upload in the sidebar, document loading with progress spinners, a question input with validation, a side-by-side display of vector and graph results, and an interactive knowledge graph visualization rendered with <a href="https://github.com/ChrisDelClea/streamlit-agraph">streamlit-agraph</a>. All UI configuration (page title, entity colors, graph dimensions) is driven by <code>config.yaml</code> — a clean separation between code and presentation.</p>
+
+<!-- ─────────────────────────────────────── -->
+<h2 id="llmops">9. LLMOps — Monitoring, Evaluation & Orchestration</h2>
+<p class="section-intro">What separates a demo from a production system: observability, quality measurement, and automation.</p>
+
+<h3>9.1 Configuration Management</h3>
+<p>All tunable parameters live in <code>config/config.yaml</code>. Secrets stay in <code>.env</code>. Python code accesses config via <code>cfg('section', 'key')</code> from <code>config/settings.py</code>. This follows the <a href="https://12factor.net/config">Twelve-Factor App</a> principle — separating config from code makes the system deployable across environments without modification.</p>
+
+<h3>9.2 Structured Logging (<code>utils/logger.py</code>)</h3>
+<p>All <code>print()</code> statements have been replaced with a structured logger. Every module calls <code>get_logger(__name__)</code> and logs at appropriate levels (<code>info</code>, <code>warning</code>, <code>error</code>, <code>debug</code>). This enables log aggregation, filtering, and alerting in production — you can't search or alert on <code>print()</code> output.</p>
+
+<h3>9.3 Prometheus Metrics (<code>monitoring/prometheus_metrics.py</code>)</h3>
+<p>Six custom metrics track the health and performance of the pipeline in real time:</p>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Metric</th><th>Type</th><th>Measures</th></tr></thead>
+  <tbody>
+    <tr><td><code>rag_requests_total</code></td><td>Counter</td><td>Total /ingest and /ask requests, by endpoint</td></tr>
+    <tr><td><code>rag_request_latency_seconds</code></td><td>Histogram</td><td>End-to-end request latency (p50, p95, p99)</td></tr>
+    <tr><td><code>llm_tokens_total</code></td><td>Counter</td><td>Prompt + completion tokens consumed per call type</td></tr>
+    <tr><td><code>llm_call_latency_seconds</code></td><td>Histogram</td><td>Individual Azure OpenAI API call duration</td></tr>
+    <tr><td><code>graph_entities_current</code></td><td>Gauge</td><td>Current entity count in the knowledge graph</td></tr>
+    <tr><td><code>vector_results_count</code></td><td>Histogram</td><td>Number of vector search results per query</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h3>9.4 Evaluation Metrics (<code>evaluation/metrics.py</code>)</h3>
+<p>Three standard NLP metrics measure answer quality automatically, controlled by <code>config.yaml</code>:</p>
+<ul style="margin: 0 0 18px 24px; line-height: 2;">
+  <li><strong>BLEU-1 to 4</strong>: N-gram precision between generated and reference answers</li>
+  <li><strong>ROUGE-1/2/L</strong>: N-gram recall — how much of the reference is captured</li>
+  <li><strong>Faithfulness</strong>: Custom metric scoring what fraction of answer sentences are grounded in the source context — the most important metric for hallucination detection in RAG</li>
+</ul>
+
+<h3>9.5 Docker & Orchestration</h3>
+<p>The full stack runs with a single command. Docker Compose defines six services with health checks and dependency ordering:</p>
+
+<pre><code>docker compose --profile monitoring up --build
+
+<span class="comment"># Services started:</span>
+<span class="comment">#  API        → http://localhost:8000/docs</span>
+<span class="comment">#  UI         → http://localhost:8501</span>
+<span class="comment">#  Prometheus → http://localhost:9090</span>
+<span class="comment">#  Grafana    → http://localhost:3000 (admin/admin)</span></code></pre>
+
+<p>Apache Airflow (available via <code>--profile airflow</code>) orchestrates the pipeline as a DAG — enabling scheduled re-ingestion, automated evaluation runs, and pipeline monitoring through the Airflow UI.</p>
+
+<!-- ─────────────────────────────────────── -->
+<h2 id="quickstart">10. Quickstart — Run It Yourself in 5 Minutes</h2>
+<p class="section-intro">You need Python 3.13, an Azure OpenAI account with two deployments, and a Neo4j Aura Free account.</p>
+
+<div class="pipeline">
+  <div class="pipeline-step">Clone Repo</div>
+  <div class="pipeline-arrow">→</div>
+  <div class="pipeline-step">pip install</div>
+  <div class="pipeline-arrow">→</div>
+  <div class="pipeline-step">Create .env</div>
+  <div class="pipeline-arrow">→</div>
+  <div class="pipeline-step">streamlit run</div>
+  <div class="pipeline-arrow">→</div>
+  <div class="pipeline-step">Upload PDF</div>
+  <div class="pipeline-arrow">→</div>
+  <div class="pipeline-step">Ask Away</div>
+</div>
+
+<pre><code><span class="comment"># 1. Clone</span>
+git clone https://github.com/VinodPungle/hybrid-rag-capstone.git
+cd hybrid-rag-capstone
+
+<span class="comment"># 2. Install dependencies</span>
+python -m venv .venv && source .venv/bin/activate  <span class="comment"># or .venv\Scripts\activate on Windows</span>
+pip install -r requirements.txt
+
+<span class="comment"># 3. Create .env with your credentials</span>
+AZURE_OPENAI_KEY=...
+AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
+AZURE_OPENAI_DEPLOYMENT=gpt-4o-mini
+AZURE_OPENAI_EMBEDDING_KEY=...
+AZURE_OPENAI_EMBEDDING_ENDPOINT=https://your-resource.openai.azure.com/
+AZURE_OPENAI_EMBEDDING_DEPLOYMENT=text-embedding-3-large
+NEO4J_URI=neo4j+ssc://your-id.databases.neo4j.io
+NEO4J_USER=neo4j
+NEO4J_PASSWORD=...
+
+<span class="comment"># 4. Start the Streamlit UI</span>
+streamlit run ui/app.py
+<span class="comment"># → Open http://localhost:8501</span>
+
+<span class="comment"># Or the REST API:</span>
+uvicorn api.app:app --reload
+<span class="comment"># → Open http://localhost:8000/docs</span></code></pre>
+
+<div class="callout tip">
+  <strong>🟢 Recommended Test Documents</strong>
+  For the best demo, try a multi-page governance document (annual report, SEC filing, policy document) — something with named organizations, roles, committees, and regulations. The knowledge graph extraction shines on structured organizational text.
+</div>
+
+<!-- ─────────────────────────────────────── -->
+<h2 id="lessons">11. Key Lessons & What to Build Next</h2>
+<p class="section-intro">What this project teaches beyond the code — and where to take it further.</p>
+
+<h3>Lessons from the Codebase</h3>
+
+<div class="component-grid">
+  <div class="component-card">
+    <div class="icon">⚙️</div>
+    <h4>Config-Driven Code</h4>
+    <p>Every tunable value — chunk size, temperature, prompts — is in <code>config.yaml</code>. Change behavior without touching Python.</p>
+  </div>
+  <div class="component-card">
+    <div class="icon">🛡️</div>
+    <h4>Graceful Degradation</h4>
+    <p>Graph failures fall back to vector-only. The system never fails completely — it just delivers less-enriched results.</p>
+  </div>
+  <div class="component-card">
+    <div class="icon">📊</div>
+    <h4>Measure Everything</h4>
+    <p>Prometheus metrics on every LLM call. Faithfulness scoring on every answer. You can't improve what you don't measure.</p>
+  </div>
+  <div class="component-card">
+    <div class="icon">🔒</div>
+    <h4>Secrets Hygiene</h4>
+    <p>API keys in <code>.env</code>, never in source. Config params in <code>config.yaml</code>, committed to git. Clean separation.</p>
+  </div>
+  <div class="component-card">
+    <div class="icon">🧪</div>
+    <h4>Test While Building</h4>
+    <p>The <code>step = max(..., 1)</code> defensive guard in <code>chunker.py</code> was discovered during pytest development. Tests catch real bugs.</p>
+  </div>
+  <div class="component-card">
+    <div class="icon">🐳</div>
+    <h4>Containerise Early</h4>
+    <p>Docker Compose from day one means every collaborator runs the same stack. No "works on my machine" surprises.</p>
+  </div>
+</div>
+
+<h3>Suggested Next Steps</h3>
+<p>Ready to extend this project? Here are the highest-impact improvements, in order of complexity:</p>
+
+<ol style="margin: 0 0 18px 28px; line-height: 2.2;">
+  <li><strong>Persistent vector store</strong> — Replace the in-memory FAISS index with a persistent vector database (Pinecone, Weaviate, or Azure AI Search) so the index survives server restarts and scales to thousands of documents.</li>
+  <li><strong>Multi-document support</strong> — Add document metadata (title, date, source) to FAISS and Neo4j so users can filter by document and the system can cite its sources in responses.</li>
+  <li><strong>Reranking</strong> — Add a cross-encoder reranker (e.g., <code>cross-encoder/ms-marco-MiniLM-L-6-v2</code>) after hybrid retrieval to improve result quality before the LLM call.</li>
+  <li><strong>Streaming responses</strong> — Add Server-Sent Events to the FastAPI <code>/ask</code> endpoint so the Streamlit UI renders the answer token-by-token, improving perceived latency.</li>
+  <li><strong>RAG evaluation with LLM judges</strong> — Replace BLEU/ROUGE with LLM-as-judge evaluation (using frameworks like <a href="https://docs.ragas.io">RAGAS</a>) for more nuanced quality assessment.</li>
+</ol>
+
+<div class="callout warn">
+  <strong>⚠️ Production Consideration</strong>
+  <code>IndexFlatL2</code> scales to ~100K vectors comfortably. Beyond that, switch to an approximate index (<code>IndexIVFFlat</code>, <code>IndexHNSWFlat</code>) or a managed vector DB. The architecture here is designed to make this swap straightforward — only <code>faiss_store.py</code> and <code>retrieval/search.py</code> need to change.
+</div>
+
+<hr style="border:none; border-top:2px solid var(--border); margin:48px 0 32px;">
+
+<h2 style="border:none; margin-top:0;">Conclusion</h2>
+<p>The hybrid-rag-capstone is more than a RAG demo — it's a template for how to build production AI systems with Python. Every component has a clear responsibility, every parameter is configurable, every LLM call is measured, and the whole stack runs with a single command.</p>
+
+<p>The core insight — that <strong>combining dense vector retrieval with structured graph retrieval gives the LLM fundamentally better context</strong> — generalises well beyond governance documents to any domain with named entities and structured relationships: legal, medical, financial, technical.</p>
+
+<p>Clone it, break it, extend it. The best way to learn this stack is to load a document you care about and start asking questions.</p>
+
+<div class="callout info">
+  <strong>📎 Resources</strong>
+  <a href="https://github.com/VinodPungle/hybrid-rag-capstone">GitHub Repository</a> ·
+  <a href="https://graphacademy.neo4j.com/">Neo4j Graph Academy (Free)</a> ·
+  <a href="https://github.com/facebookresearch/faiss/wiki">FAISS Documentation</a> ·
+  <a href="https://fastapi.tiangolo.com/">FastAPI Docs</a> ·
+  <a href="https://prometheus.io/docs/introduction/overview/">Prometheus Introduction</a> ·
+  <a href="https://docs.ragas.io">RAGAS Evaluation Framework</a>
+</div>
+
+</article>
+</div>
+
+<!-- FOOTER -->
+<div style="background:var(--navy); color:rgba(255,255,255,0.65); text-align:center; padding:32px 24px; font-size:14px;">
+  <div style="max-width:860px; margin:0 auto;">
+    Based on <a href="https://github.com/VinodPungle/hybrid-rag-capstone" style="color:var(--cyan)">github.com/VinodPungle/hybrid-rag-capstone</a>
+    &nbsp;·&nbsp; Written March 2025
+    &nbsp;·&nbsp; Stack: Python · Azure OpenAI · FAISS · Neo4j · FastAPI · Streamlit · Docker
+  </div>
+</div>
+
+</body>
+</html>
