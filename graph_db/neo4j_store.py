@@ -1,8 +1,28 @@
+"""
+Neo4j Knowledge Graph Store
+
+Manages the Neo4j graph database: stores entities as nodes and
+relationships as edges, queries the graph for context retrieval,
+and fetches graph data for UI visualization.
+
+Connection credentials come from .env (secrets).
+Graph query parameters (max_depth, limits) come from config.yaml → retrieval.
+SSL fix behavior is controlled by config.yaml → neo4j.ssl_fix.
+"""
+
 import os
 from neo4j import GraphDatabase
 from dotenv import load_dotenv
 
+# [Step 1] Import config loader for retrieval params and SSL fix flag
+from config.settings import get as cfg
+
+# [Step 2] Import structured logger (replaces print() statements)
+from utils.logger import get_logger
+
 load_dotenv()
+
+logger = get_logger(__name__)
 
 
 def get_driver():
@@ -10,8 +30,9 @@ def get_driver():
     uri = os.getenv("NEO4J_URI", "neo4j+ssc://d23c6a98.databases.neo4j.io")
     user = os.getenv("NEO4J_USER", "neo4j")
     password = os.getenv("NEO4J_PASSWORD", "")
-    # Use neo4j+ssc:// to skip full certificate chain verification (needed for Aura on some platforms)
-    if uri.startswith("neo4j+s://"):
+    # [Step 1] SSL fix controlled by config.yaml → neo4j.ssl_fix
+    # Converts neo4j+s:// to neo4j+ssc:// for Aura compatibility
+    if cfg("neo4j", "ssl_fix") and uri.startswith("neo4j+s://"):
         uri = uri.replace("neo4j+s://", "neo4j+ssc://", 1)
     return GraphDatabase.driver(uri, auth=(user, password))
 
@@ -62,14 +83,28 @@ def build_knowledge_graph(driver, entities, relationships):
     clear_graph(driver)
     store_entities(driver, entities)
     store_relationships(driver, relationships)
-    print(f"Knowledge graph built: {len(entities)} entities, {len(relationships)} relationships.")
+    # [Step 2] Structured log instead of print()
+    logger.info("Knowledge graph built: %d entities, %d relationships.", len(entities), len(relationships))
 
 
-def query_graph(driver, entity_name, max_depth=2, limit=10):
+def query_graph(driver, entity_name, max_depth=None, limit=None):
     """
     Query the knowledge graph for entities and relationships related to a given entity name.
     Returns a list of readable relationship strings.
+
+    Args:
+        driver: Neo4j driver instance
+        entity_name: Entity name to search for
+        max_depth: Max relationship hops (defaults to config.yaml → retrieval.graph_max_depth)
+        limit: Max results per entity match (defaults to config.yaml → retrieval.graph_limit)
     """
+    # [Step 1] Load defaults from config.yaml if not explicitly provided.
+    # Uses 'is None' instead of 'or' so that 0 can be passed as a valid value.
+    _ret = cfg("retrieval")
+    if max_depth is None:
+        max_depth = _ret["graph_max_depth"]
+    if limit is None:
+        limit = _ret["graph_limit"]
     with driver.session() as session:
         result = session.run(
             """
@@ -109,12 +144,14 @@ def query_graph_for_query(driver, query, limit=15):
         result = session.run("MATCH (e:Entity) RETURN e.name AS name")
         all_entity_names = [record["name"] for record in result]
 
-    # Find entities mentioned in the query
+    # [Step 1] min_entity_word_length from config.yaml → retrieval section
+    # Only match entity words that are at least this many characters long
+    min_word_len = cfg("retrieval", "min_entity_word_length")
     query_lower = query.lower()
     matching_entities = [
         name for name in all_entity_names
         if name.lower() in query_lower or any(
-            word in query_lower for word in name.lower().split() if len(word) > 3
+            word in query_lower for word in name.lower().split() if len(word) >= min_word_len
         )
     ]
 
@@ -131,13 +168,17 @@ def query_graph_for_query(driver, query, limit=15):
     return all_context
 
 
-def fetch_graph_visual_data(driver, limit=100):
+def fetch_graph_visual_data(driver, limit=None):
     """
     Fetch all nodes and relationships from Neo4j for visualization.
+
     Returns (nodes, edges) where:
         nodes: list of dicts with 'name' and 'type'
         edges: list of dicts with 'source', 'target', and 'relation'
     """
+    # [Step 1] Default limit from config.yaml → retrieval.graph_viz_limit
+    if limit is None:
+        limit = cfg("retrieval", "graph_viz_limit")
     nodes = []
     edges = []
     seen_nodes = set()
