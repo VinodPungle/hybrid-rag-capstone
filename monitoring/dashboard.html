@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hybrid RAG — Monitoring Dashboard</title>
+<style>
+  :root {
+    --bg: #0f1923;
+    --surface: #1a2733;
+    --card: #1e2d3d;
+    --border: #2a3f52;
+    --text: #e0e6ed;
+    --muted: #8899aa;
+    --green: #2ecc71;
+    --blue: #3498db;
+    --orange: #e67e22;
+    --red: #e74c3c;
+    --cyan: #00b0f0;
+    --purple: #9b59b6;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); }
+
+  .header {
+    background: linear-gradient(135deg, #1a2733 0%, #0f1923 100%);
+    border-bottom: 1px solid var(--border);
+    padding: 16px 24px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .header h1 { font-size: 20px; font-weight: 700; }
+  .header h1 span { color: var(--cyan); }
+  .status { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); }
+  .status-dot.error { background: var(--red); }
+
+  .controls {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 24px;
+    display: flex; align-items: center; gap: 16px;
+  }
+  .controls label { font-size: 13px; color: var(--muted); }
+  .controls input {
+    background: var(--card); border: 1px solid var(--border); color: var(--text);
+    padding: 6px 12px; border-radius: 4px; font-size: 13px; width: 280px;
+  }
+  .controls button {
+    background: var(--cyan); color: #fff; border: none; padding: 6px 16px;
+    border-radius: 4px; font-size: 13px; font-weight: 600; cursor: pointer;
+  }
+  .controls button:hover { opacity: 0.9; }
+  .auto-label { font-size: 12px; color: var(--muted); margin-left: auto; }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px;
+    padding: 24px;
+  }
+  .grid-charts {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+    gap: 16px;
+    padding: 0 24px 24px;
+  }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px;
+  }
+  .card-label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+  .card-value { font-size: 32px; font-weight: 700; line-height: 1.2; }
+  .card-sub { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .card-value.green { color: var(--green); }
+  .card-value.blue { color: var(--blue); }
+  .card-value.orange { color: var(--orange); }
+  .card-value.cyan { color: var(--cyan); }
+  .card-value.purple { color: var(--purple); }
+
+  .chart-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px;
+  }
+  .chart-title { font-size: 14px; font-weight: 600; margin-bottom: 16px; color: var(--cyan); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; color: var(--muted); font-weight: 600; padding: 8px 12px; border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; }
+  td { padding: 8px 12px; border-bottom: 1px solid rgba(42,63,82,0.5); }
+  tr:last-child td { border-bottom: none; }
+
+  .bar-container { background: rgba(255,255,255,0.05); border-radius: 4px; height: 20px; position: relative; overflow: hidden; }
+  .bar { height: 100%; border-radius: 4px; transition: width 0.5s ease; }
+  .bar.blue { background: linear-gradient(90deg, #2980b9, #3498db); }
+  .bar.green { background: linear-gradient(90deg, #27ae60, #2ecc71); }
+  .bar.orange { background: linear-gradient(90deg, #d35400, #e67e22); }
+  .bar.purple { background: linear-gradient(90deg, #8e44ad, #9b59b6); }
+  .bar.cyan { background: linear-gradient(90deg, #0090c0, #00b0f0); }
+
+  .section-title {
+    font-size: 16px; font-weight: 700; color: var(--text);
+    padding: 8px 24px 0; margin-top: 8px;
+  }
+  .error-box {
+    background: rgba(231,76,60,0.1); border: 1px solid var(--red);
+    border-radius: 8px; padding: 16px 20px; margin: 24px;
+    color: var(--red); font-size: 14px; display: none;
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Hybrid RAG <span>Monitoring Dashboard</span></h1>
+  <div class="status">
+    <div class="status-dot" id="statusDot"></div>
+    <span id="statusText">Connecting...</span>
+  </div>
+</div>
+
+<div class="controls">
+  <label>API Endpoint:</label>
+  <input type="text" id="apiUrl" value="http://localhost:8002/metrics">
+  <button onclick="fetchMetrics()">Refresh Now</button>
+  <span class="auto-label">Auto-refresh every <strong>10s</strong> | Last update: <span id="lastUpdate">—</span></span>
+</div>
+
+<div class="error-box" id="errorBox"></div>
+
+<!-- KPI Cards -->
+<div class="grid" id="kpiGrid">
+  <div class="card">
+    <div class="card-label">Total Requests</div>
+    <div class="card-value green" id="totalRequests">—</div>
+    <div class="card-sub" id="requestBreakdown"></div>
+  </div>
+  <div class="card">
+    <div class="card-label">Documents Ingested</div>
+    <div class="card-value blue" id="docsIngested">—</div>
+  </div>
+  <div class="card">
+    <div class="card-label">Chunks in Index</div>
+    <div class="card-value cyan" id="chunksCount">—</div>
+  </div>
+  <div class="card">
+    <div class="card-label">Graph Entities</div>
+    <div class="card-value purple" id="graphEntities">—</div>
+  </div>
+  <div class="card">
+    <div class="card-label">Graph Relationships</div>
+    <div class="card-value purple" id="graphRelationships">—</div>
+  </div>
+  <div class="card">
+    <div class="card-label">Total LLM Tokens</div>
+    <div class="card-value orange" id="totalTokens">—</div>
+    <div class="card-sub" id="tokenBreakdown"></div>
+  </div>
+</div>
+
+<!-- Charts Section -->
+<div class="section-title">Latency & Performance</div>
+<div class="grid-charts">
+  <div class="chart-card">
+    <div class="chart-title">Request Latency (seconds)</div>
+    <table>
+      <tr><th>Endpoint</th><th>Avg Latency</th><th>Requests</th><th></th></tr>
+      <tbody id="latencyTable"></tbody>
+    </table>
+  </div>
+  <div class="chart-card">
+    <div class="chart-title">LLM Call Latency (seconds)</div>
+    <table>
+      <tr><th>Call Type</th><th>Avg Latency</th><th>Calls</th><th></th></tr>
+      <tbody id="llmLatencyTable"></tbody>
+    </table>
+  </div>
+</div>
+
+<div class="section-title">Token Consumption</div>
+<div class="grid-charts">
+  <div class="chart-card">
+    <div class="chart-title">Token Usage by Call Type</div>
+    <table>
+      <tr><th>Call Type</th><th>Prompt Tokens</th><th>Completion Tokens</th><th>Total</th></tr>
+      <tbody id="tokenTable"></tbody>
+    </table>
+  </div>
+  <div class="chart-card">
+    <div class="chart-title">Retrieval Results per Query</div>
+    <table>
+      <tr><th>Search Method</th><th>Avg Results</th><th>Queries</th><th></th></tr>
+      <tbody id="retrievalTable"></tbody>
+    </table>
+  </div>
+</div>
+
+<div class="section-title">All Raw Metrics</div>
+<div class="grid-charts" style="padding-bottom: 40px;">
+  <div class="chart-card" style="grid-column: 1 / -1;">
+    <div class="chart-title">Prometheus Metrics (raw)</div>
+    <div style="max-height: 400px; overflow-y: auto;">
+      <table>
+        <tr><th>Metric</th><th>Value</th></tr>
+        <tbody id="rawMetricsTable"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+let refreshInterval;
+
+function parsePrometheus(text) {
+  const metrics = {};
+  text.split('\n').forEach(line => {
+    line = line.trim();
+    if (!line || line.startsWith('#')) return;
+    const match = line.match(/^([a-zA-Z_:][a-zA-Z0-9_:]*(?:\{[^}]*\})?)\s+(.+)$/);
+    if (match) {
+      metrics[match[1]] = parseFloat(match[2]);
+    }
+  });
+  return metrics;
+}
+
+function getMetric(metrics, name, labels) {
+  if (labels) {
+    const key = `${name}{${Object.entries(labels).map(([k,v]) => `${k}="${v}"`).join(',')}}`;
+    return metrics[key] || 0;
+  }
+  return metrics[name] || 0;
+}
+
+function makeBar(value, max, colorClass) {
+  const pct = max > 0 ? Math.min((value / max) * 100, 100) : 0;
+  return `<div class="bar-container"><div class="bar ${colorClass}" style="width:${pct}%"></div></div>`;
+}
+
+async function fetchMetrics() {
+  const url = document.getElementById('apiUrl').value;
+  const errorBox = document.getElementById('errorBox');
+  const statusDot = document.getElementById('statusDot');
+  const statusText = document.getElementById('statusText');
+
+  try {
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const text = await resp.text();
+    const m = parsePrometheus(text);
+
+    errorBox.style.display = 'none';
+    statusDot.className = 'status-dot';
+    statusText.textContent = 'Connected';
+    document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();
+
+    // --- KPI Cards ---
+    const ingestReqs = getMetric(m, 'rag_requests_total', {endpoint:'ingest'});
+    const askReqs = getMetric(m, 'rag_requests_total', {endpoint:'ask'});
+    document.getElementById('totalRequests').textContent = ingestReqs + askReqs;
+    document.getElementById('requestBreakdown').textContent = `${ingestReqs} ingest · ${askReqs} ask`;
+
+    document.getElementById('docsIngested').textContent = getMetric(m, 'documents_ingested_total');
+    document.getElementById('chunksCount').textContent = getMetric(m, 'chunks_created_current');
+    document.getElementById('graphEntities').textContent = getMetric(m, 'graph_entities_current');
+    document.getElementById('graphRelationships').textContent = getMetric(m, 'graph_relationships_current');
+
+    const extPrompt = getMetric(m, 'llm_tokens_total', {call_type:'entity_extraction', token_type:'prompt'});
+    const extCompl = getMetric(m, 'llm_tokens_total', {call_type:'entity_extraction', token_type:'completion'});
+    const genPrompt = getMetric(m, 'llm_tokens_total', {call_type:'generation', token_type:'prompt'});
+    const genCompl = getMetric(m, 'llm_tokens_total', {call_type:'generation', token_type:'completion'});
+    const totalTok = extPrompt + extCompl + genPrompt + genCompl;
+    document.getElementById('totalTokens').textContent = totalTok.toLocaleString();
+    document.getElementById('tokenBreakdown').textContent = `${(extPrompt+genPrompt).toLocaleString()} prompt · ${(extCompl+genCompl).toLocaleString()} completion`;
+
+    // --- Request Latency ---
+    const latencyData = [
+      {endpoint: 'ingest', count: ingestReqs, sum: getMetric(m, 'rag_request_latency_seconds_sum', {endpoint:'ingest'}), color: 'blue'},
+      {endpoint: 'ask', count: askReqs, sum: getMetric(m, 'rag_request_latency_seconds_sum', {endpoint:'ask'}), color: 'green'},
+    ];
+    const maxLatency = Math.max(...latencyData.map(d => d.count > 0 ? d.sum/d.count : 0), 1);
+    document.getElementById('latencyTable').innerHTML = latencyData.map(d => {
+      const avg = d.count > 0 ? (d.sum / d.count).toFixed(2) : '—';
+      return `<tr><td><strong>${d.endpoint}</strong></td><td>${avg}s</td><td>${d.count}</td><td style="width:40%">${makeBar(d.count > 0 ? d.sum/d.count : 0, maxLatency, d.color)}</td></tr>`;
+    }).join('');
+
+    // --- LLM Call Latency ---
+    const llmTypes = ['entity_extraction', 'generation'];
+    const llmData = llmTypes.map(ct => ({
+      type: ct,
+      count: getMetric(m, 'llm_call_latency_seconds_count', {call_type: ct}),
+      sum: getMetric(m, 'llm_call_latency_seconds_sum', {call_type: ct}),
+      color: ct === 'generation' ? 'green' : 'orange'
+    }));
+    const maxLlm = Math.max(...llmData.map(d => d.count > 0 ? d.sum/d.count : 0), 1);
+    document.getElementById('llmLatencyTable').innerHTML = llmData.map(d => {
+      const avg = d.count > 0 ? (d.sum / d.count).toFixed(2) : '—';
+      return `<tr><td><strong>${d.type}</strong></td><td>${avg}s</td><td>${d.count}</td><td style="width:40%">${makeBar(d.count > 0 ? d.sum/d.count : 0, maxLlm, d.color)}</td></tr>`;
+    }).join('');
+
+    // --- Token Table ---
+    const tokenData = [
+      {type: 'entity_extraction', prompt: extPrompt, completion: extCompl},
+      {type: 'generation', prompt: genPrompt, completion: genCompl},
+    ];
+    document.getElementById('tokenTable').innerHTML = tokenData.map(d => {
+      return `<tr><td><strong>${d.type}</strong></td><td>${d.prompt.toLocaleString()}</td><td>${d.completion.toLocaleString()}</td><td><strong>${(d.prompt+d.completion).toLocaleString()}</strong></td></tr>`;
+    }).join('') + `<tr style="border-top:2px solid var(--border)"><td><strong>Total</strong></td><td><strong>${(extPrompt+genPrompt).toLocaleString()}</strong></td><td><strong>${(extCompl+genCompl).toLocaleString()}</strong></td><td><strong>${totalTok.toLocaleString()}</strong></td></tr>`;
+
+    // --- Retrieval Table ---
+    const vecCount = getMetric(m, 'vector_results_count_count');
+    const vecSum = getMetric(m, 'vector_results_count_sum');
+    const graphCount = getMetric(m, 'graph_results_count_count');
+    const graphSum = getMetric(m, 'graph_results_count_sum');
+    const retData = [
+      {method: 'Vector Search', avg: vecCount > 0 ? (vecSum/vecCount).toFixed(1) : '—', queries: vecCount, color: 'cyan'},
+      {method: 'Graph Search', avg: graphCount > 0 ? (graphSum/graphCount).toFixed(1) : '—', queries: graphCount, color: 'purple'},
+    ];
+    const maxRet = Math.max(vecCount > 0 ? vecSum/vecCount : 0, graphCount > 0 ? graphSum/graphCount : 0, 1);
+    document.getElementById('retrievalTable').innerHTML = retData.map(d => {
+      return `<tr><td><strong>${d.method}</strong></td><td>${d.avg}</td><td>${d.queries}</td><td style="width:40%">${makeBar(parseFloat(d.avg)||0, maxRet, d.color)}</td></tr>`;
+    }).join('');
+
+    // --- Raw Metrics ---
+    const rawEntries = Object.entries(m)
+      .filter(([k]) => k.match(/^(rag_|llm_|documents_|chunks_|graph_entities|graph_relationships|vector_results|graph_results)/) && !k.includes('_created') && !k.includes('_bucket'))
+      .sort(([a],[b]) => a.localeCompare(b));
+    document.getElementById('rawMetricsTable').innerHTML = rawEntries.map(([k,v]) => {
+      return `<tr><td style="font-family:monospace;font-size:12px;color:var(--cyan)">${k}</td><td style="text-align:right"><strong>${typeof v === 'number' ? (Number.isInteger(v) ? v.toLocaleString() : v.toFixed(4)) : v}</strong></td></tr>`;
+    }).join('');
+
+  } catch (err) {
+    errorBox.style.display = 'block';
+    errorBox.textContent = `Failed to fetch metrics: ${err.message}. Make sure the API is running at the URL above.`;
+    statusDot.className = 'status-dot error';
+    statusText.textContent = 'Disconnected';
+  }
+}
+
+// Auto-refresh every 10 seconds
+fetchMetrics();
+refreshInterval = setInterval(fetchMetrics, 10000);
+</script>
+</body>
+</html>
