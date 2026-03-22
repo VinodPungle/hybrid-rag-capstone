@@ -21,6 +21,7 @@ def test_health_no_document():
     data = resp.json()
     assert data["status"] == "ok"
     assert data["document_loaded"] is False
+    assert data["graph_available"] is False
 
 
 def test_ask_without_document():
@@ -32,6 +33,14 @@ def test_ask_without_document():
 def test_ask_empty_query():
     resp = client.post("/ask", json={"query": ""})
     assert resp.status_code == 422  # Pydantic validation error
+
+
+def test_graph_no_driver():
+    resp = client.get("/graph")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["nodes"] == []
+    assert data["edges"] == []
 
 
 def test_ingest_non_pdf():

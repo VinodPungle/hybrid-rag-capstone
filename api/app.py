@@ -45,7 +45,7 @@ from embeddings.embedder import embed_texts
 from vector_db.faiss_store import build_faiss_index
 from retrieval.hybrid_search import hybrid_search
 from graph_db.entity_extractor import extract_graph_from_chunks
-from graph_db.neo4j_store import get_driver, build_knowledge_graph
+from graph_db.neo4j_store import get_driver, build_knowledge_graph, fetch_graph_visual_data
 from llm.generator import generate_answer
 
 load_dotenv()
@@ -108,10 +108,30 @@ class IngestResponse(BaseModel):
     message: str
 
 
+class GraphNode(BaseModel):
+    """A node in the knowledge graph visualization."""
+    name: str
+    type: str
+
+
+class GraphEdge(BaseModel):
+    """An edge in the knowledge graph visualization."""
+    source: str
+    target: str
+    relation: str
+
+
+class GraphResponse(BaseModel):
+    """Response body for the /graph endpoint."""
+    nodes: list[GraphNode]
+    edges: list[GraphEdge]
+
+
 class HealthResponse(BaseModel):
     """Response body for the /health endpoint."""
     status: str
     document_loaded: bool
+    graph_available: bool
 
 
 # --------------- Endpoints ---------------
@@ -122,6 +142,7 @@ def health():
     return HealthResponse(
         status="ok",
         document_loaded=_state["index"] is not None,
+        graph_available=_state["neo4j_driver"] is not None,
     )
 
 
@@ -230,3 +251,25 @@ def ask(request: AskRequest):
         graph_results=results["graph_results"],
         latency_s=round(elapsed, 3),
     )
+
+
+@app.get("/graph", response_model=GraphResponse)
+def graph():
+    """
+    Fetch knowledge graph nodes and edges for visualization.
+
+    Returns all entities (nodes) and relationships (edges) from Neo4j,
+    limited by config.yaml → retrieval.graph_viz_limit.
+    """
+    if _state["neo4j_driver"] is None:
+        return GraphResponse(nodes=[], edges=[])
+
+    try:
+        graph_nodes, graph_edges = fetch_graph_visual_data(_state["neo4j_driver"])
+        return GraphResponse(
+            nodes=[GraphNode(name=n["name"], type=n["type"]) for n in graph_nodes],
+            edges=[GraphEdge(source=e["source"], target=e["target"], relation=e["relation"]) for e in graph_edges],
+        )
+    except Exception as e:
+        logger.warning("Failed to fetch graph data: %s", e)
+        return GraphResponse(nodes=[], edges=[])
