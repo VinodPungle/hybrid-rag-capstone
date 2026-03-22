@@ -1,0 +1,23 @@
+stages:
+  ingest:
+    cmd: python -c "
+      from ingestion.pdf_loader import load_pdf_text;
+      from ingestion.chunker import chunk_text;
+      import json, os;
+      from dotenv import load_dotenv;
+      load_dotenv();
+      text = load_pdf_text(os.getenv('INPUT_FILE'));
+      chunks = chunk_text(text);
+      json.dump(chunks, open('data/chunks.json','w'));
+      print(f'{len(chunks)} chunks saved.')
+      "
+    deps:
+      - ingestion/pdf_loader.py
+      - ingestion/chunker.py
+      - config/config.yaml
+    params:
+      - config/config.yaml:
+          - ingestion.chunk_size
+          - ingestion.chunk_overlap
+    outs:
+      - data/chunks.json
