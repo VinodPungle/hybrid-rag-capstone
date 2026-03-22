@@ -1,3 +1,20 @@
+"""
+CLI Runner for the Hybrid RAG Pipeline
+
+Runs the full pipeline from the command line:
+  1. Load PDF from INPUT_FILE env var
+  2. Chunk text using config-driven parameters
+  3. Generate embeddings via Azure OpenAI
+  4. Build FAISS vector index
+  5. Build knowledge graph in Neo4j (GraphRAG)
+  6. Run hybrid search (vector + graph)
+  7. Generate answer using combined context
+
+Uses structured logging (Step 2) instead of print() for all status/error messages.
+
+Usage: python run_rag.py
+"""
+
 from ingestion.pdf_loader import load_pdf_text
 from ingestion.chunker import chunk_text
 from embeddings.embedder import embed_texts
@@ -7,98 +24,109 @@ from graph_db.entity_extractor import extract_graph_from_chunks
 from graph_db.neo4j_store import get_driver, build_knowledge_graph
 from llm.generator import generate_answer
 
+# [Step 2] Import structured logger (replaces all print() statements)
+from utils.logger import get_logger
+
 import os
 import sys
 from dotenv import load_dotenv
 
 load_dotenv()
 
+logger = get_logger(__name__)
+
+
 def main():
-    # 1. Load document
+    # 1. Load document from INPUT_FILE environment variable
     input_file = os.getenv("INPUT_FILE")
     if not input_file:
-        print("Error: INPUT_FILE environment variable is not set.")
+        logger.error("INPUT_FILE environment variable is not set.")
         sys.exit(1)
     if not os.path.exists(input_file):
-        print(f"Error: File not found: {input_file}")
+        logger.error("File not found: %s", input_file)
         sys.exit(1)
 
     try:
         text = load_pdf_text(input_file)
     except Exception as e:
-        print(f"Error loading PDF: {e}")
+        logger.error("Error loading PDF: %s", e)
         sys.exit(1)
 
     if not text or not text.strip():
-        print("Error: No text extracted from PDF.")
+        logger.error("No text extracted from PDF.")
         sys.exit(1)
 
-    # 2. Chunk text
+    # 2. Chunk text (chunk_size and overlap from config.yaml)
     try:
         chunks = chunk_text(text)
     except Exception as e:
-        print(f"Error chunking text: {e}")
+        logger.error("Error chunking text: %s", e)
         sys.exit(1)
 
     if not chunks:
-        print("Error: No chunks produced from text.")
+        logger.error("No chunks produced from text.")
         sys.exit(1)
 
-    # 3. Create embeddings
+    logger.info("Document loaded: %d chunks created.", len(chunks))
+
+    # 3. Create embeddings via Azure OpenAI
     try:
         vectors = embed_texts(chunks)
     except Exception as e:
-        print(f"Error generating embeddings: {e}")
+        logger.error("Error generating embeddings: %s", e)
         sys.exit(1)
 
-    # 4. Build vector index
+    # 4. Build FAISS vector index
     try:
         index = build_faiss_index(vectors)
     except Exception as e:
-        print(f"Error building FAISS index: {e}")
+        logger.error("Error building FAISS index: %s", e)
         sys.exit(1)
 
-    # 5. Build knowledge graph (GraphRAG)
+    logger.info("Vector index built successfully.")
+
+    # 5. Build knowledge graph in Neo4j (GraphRAG) — non-fatal if it fails
     driver = None
     try:
-        print("Extracting entities and relationships from chunks...")
+        logger.info("Extracting entities and relationships from chunks...")
         entities, relationships = extract_graph_from_chunks(chunks)
 
-        print("Building knowledge graph in Neo4j...")
+        logger.info("Building knowledge graph in Neo4j...")
         driver = get_driver()
         build_knowledge_graph(driver, entities, relationships)
     except Exception as e:
-        print(f"Warning: Graph construction failed, will use vector-only search: {e}")
+        logger.warning("Graph construction failed, will use vector-only search: %s", e)
 
-    # 6. Ask a question (Hybrid: vector + graph search)
+    # 6. Ask a question using hybrid search (vector + graph)
     query = "Tell more about audit committee responsibilities."
     try:
         results = hybrid_search(query, index, chunks, driver=driver)
     except Exception as e:
-        print(f"Error during hybrid search: {e}")
+        logger.error("Error during hybrid search: %s", e)
         sys.exit(1)
 
     if not results["vector_results"] and not results["graph_results"]:
-        print("No relevant results found for the query.")
+        logger.info("No relevant results found for the query.")
         if driver:
             driver.close()
         sys.exit(0)
 
-    # 7. Generate answer using combined context
+    # 7. Generate answer using combined context from both search methods
     try:
         answer = generate_answer(query, results["combined_context"])
     except Exception as e:
-        print(f"Error generating answer: {e}")
+        logger.error("Error generating answer: %s", e)
         if driver:
             driver.close()
         sys.exit(1)
 
+    logger.info("Answer generated successfully.")
     print("\n================ ANSWER ================\n")
     print(answer)
     print("\n=======================================\n")
 
     if results["graph_results"]:
-        print("--- Knowledge Graph Context Used ---")
+        logger.info("Knowledge graph context used: %d relationships", len(results["graph_results"]))
         for ctx in results["graph_results"]:
             print(f"  {ctx}")
         print()

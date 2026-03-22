@@ -9,3 +9,10 @@ fastapi
 uvicorn
 neo4j
 streamlit-agraph
+pyyaml
+python-multipart
+dvc
+rouge-score
+nltk
+prometheus-client
+prometheus-fastapi-instrumentator

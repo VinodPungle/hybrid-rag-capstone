@@ -1,0 +1,118 @@
+# ============================================================
+# Hybrid RAG Capstone - LLMOps Configuration
+# ============================================================
+# All non-secret, tunable parameters live here.
+# Secrets (API keys, passwords) stay in .env
+# ============================================================
+
+# --- Document Ingestion ---
+ingestion:
+  chunk_size: 500          # words per chunk
+  chunk_overlap: 80        # overlapping words between chunks
+  supported_formats:
+    - pdf
+    - docx
+
+# --- Embedding Model ---
+embedding:
+  api_version: "2024-02-01"
+  dimensions: 1536
+  batch_size: 16           # max texts per embedding API call (future use)
+
+# --- LLM / Generation ---
+llm:
+  api_version: "2024-12-01-preview"
+  temperature: 0.3
+  max_tokens: 500
+  system_prompt: >
+    You are a helpful document understanding assistant.
+    Answer questions based only on the provided context.
+  user_prompt_template: |
+    You are a document understanding assistant.
+    Answer ONLY using the context below. If the answer cannot be found in the context, say "I cannot answer this based on the provided context."
+
+    Context:
+    {context}
+
+    Question:
+    {query}
+
+    Answer:
+
+# --- Entity Extraction (GraphRAG) ---
+entity_extraction:
+  temperature: 0.0
+  max_tokens: 1000
+  entity_types:
+    - Person
+    - Organization
+    - Concept
+    - Regulation
+    - Committee
+    - Role
+    - Process
+    - Document
+  extraction_prompt: |
+    Extract entities and relationships from the following text.
+    Return a JSON object with two keys:
+    - "entities": a list of objects with "name" (string) and "type" (string, one of: {entity_types})
+    - "relationships": a list of objects with "source" (string), "target" (string), and "relation" (string)
+
+    Only extract clearly stated facts. Keep entity names concise and normalized (e.g. "Audit Committee" not "the audit committee").
+
+    Text:
+    {text}
+
+    Return ONLY valid JSON, no markdown formatting.
+
+# --- Retrieval ---
+retrieval:
+  vector_top_k: 3          # number of vector search results
+  graph_max_depth: 2        # max hops in knowledge graph traversal
+  graph_limit: 15           # max relationships per entity match
+  graph_viz_limit: 150      # max nodes/edges for visualization
+  min_entity_word_length: 4 # min word length for entity matching in queries
+
+# --- Neo4j Graph DB ---
+neo4j:
+  ssl_fix: true             # convert neo4j+s:// to neo4j+ssc:// for Aura compatibility
+
+# --- UI ---
+ui:
+  page_title: "Hybrid RAG Demo"
+  app_title: "Hybrid RAG - Documents Understanding Assistant"
+  app_description: >
+    First load the document and then ask questions.
+    Uses both vector search and knowledge graph (GraphRAG) for enhanced retrieval.
+  entity_colors:
+    Person: "#FF6B6B"
+    Organization: "#4ECDC4"
+    Committee: "#45B7D1"
+    Role: "#96CEB4"
+    Regulation: "#FFEAA7"
+    Process: "#DDA0DD"
+    Document: "#98D8C8"
+    Concept: "#F7DC6F"
+  graph_viz:
+    width: 900
+    height: 600
+    directed: true
+    physics: true
+
+# --- LLMOps: Evaluation, Monitoring & Orchestration ---
+llmops:
+  evaluation:
+    enabled: true
+    metrics:
+      - bleu
+      - rouge
+      - faithfulness
+  monitoring:
+    log_prompts: false       # log all prompts/responses (enable for debugging)
+    track_token_usage: true
+    track_latency: true
+  orchestration:
+    dag_id: "hybrid_rag_pipeline"
+    schedule: null           # null = manual trigger, or cron e.g. "@daily"
+    retries: 1
+    retry_delay_minutes: 2
