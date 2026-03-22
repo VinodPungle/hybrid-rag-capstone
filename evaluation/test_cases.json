@@ -1,0 +1,14 @@
+[
+  {
+    "query": "What are the responsibilities of the audit committee?",
+    "reference_answer": "The audit committee is responsible for overseeing the financial reporting process, monitoring internal controls, reviewing audit findings, and ensuring compliance with regulations."
+  },
+  {
+    "query": "What is the role of internal audit?",
+    "reference_answer": "Internal audit provides independent assurance on governance, risk management, and internal control processes within the organization."
+  },
+  {
+    "query": "How does the audit committee interact with external auditors?",
+    "reference_answer": "The audit committee reviews and approves the external auditor's appointment, discusses audit plans and findings, and ensures auditor independence."
+  }
+]
