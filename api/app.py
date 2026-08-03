@@ -18,6 +18,7 @@ import tempfile
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 
@@ -77,6 +78,18 @@ app = FastAPI(
     description="REST API for the Hybrid RAG pipeline (vector + knowledge graph).",
     version="1.0.0",
     lifespan=lifespan,
+)
+
+# [Azure] CORS middleware — required when UI and API are on different domains
+# ALLOWED_ORIGINS env var: comma-separated list of allowed origins
+# Defaults to permissive "*" for development; set specific origins in production
+_allowed_origins = os.getenv("ALLOWED_ORIGINS", "*").split(",")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_allowed_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # [Step 9] Expose /metrics endpoint for Prometheus to scrape

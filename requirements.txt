@@ -16,3 +16,4 @@ rouge-score
 nltk
 prometheus-client
 prometheus-fastapi-instrumentator
+requests

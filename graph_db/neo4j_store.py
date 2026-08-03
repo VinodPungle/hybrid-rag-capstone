@@ -27,7 +27,7 @@ logger = get_logger(__name__)
 
 def get_driver():
     """Create and return a Neo4j driver instance."""
-    uri = os.getenv("NEO4J_URI", "neo4j+ssc://d23c6a98.databases.neo4j.io")
+    uri = os.getenv("NEO4J_URI", "neo4j+ssc://e969a2b1.databases.neo4j.io")
     user = os.getenv("NEO4J_USER", "neo4j")
     password = os.getenv("NEO4J_PASSWORD", "")
     # [Step 1] SSL fix controlled by config.yaml → neo4j.ssl_fix
